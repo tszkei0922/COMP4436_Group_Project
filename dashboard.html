@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Environmental Dashboard</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome for Icons -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" rel="stylesheet">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.min.js"></script>
+    <!-- Paho MQTT -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+    <style>
+        body {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+            padding: 30px 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .container {
+            max-width: 1200px;
+        }
+        h1 {
+            color: #2c3e50;
+            font-weight: 700;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.1);
+        }
+        .card {
+            border: none;
+            border-radius: 15px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s, box-shadow 0.3s;
+            margin-bottom: 25px;
+            overflow: hidden;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);
+        }
+        .card-header {
+            background: linear-gradient(90deg, #6a11cb 0%, #2575fc 100%);
+            color: white;
+            padding: 15px;
+            border-radius: 15px 15px 0 0;
+            display: flex;
+            align-items: center;
+            font-weight: 600;
+        }
+        .card-header i {
+            margin-right: 10px;
+        }
+        .card-body {
+            padding: 20px;
+            background: #ffffff;
+        }
+        .light-card-light {
+            background: #ffffff;
+            color: #000000;
+            cursor: pointer;
+        }
+        .light-card-dark {
+            background: #2c3e50;
+            color: #ffffff;
+            cursor: pointer;
+        }
+        .chart-container {
+            height: 180px;
+        }
+        .value-display {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #2c3e50;
+            margin: 10px 0;
+        }
+        .light-card-dark .value-display {
+            color: #ffffff;
+        }
+        .status-text {
+            font-size: 1.1rem;
+            font-weight: 500;
+            margin-top: 10px;
+        }
+        @media (max-width: 768px) {
+            .value-display {
+                font-size: 2rem;
+            }
+            .card-header {
+                font-size: 1.1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="text-center mb-5">Environmental Dashboard</h1>
+        <div class="row">
+            <!-- Temperature Card -->
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header">
+                        <i class="fas fa-thermometer-half"></i> Temperature
+                    </div>
+                    <div class="card-body">
+                        <div class="value-display" id="temperature-value">-- °C</div>
+                        <canvas id="temperatureChart" class="chart-container"></canvas>
+                    </div>
+                </div>
+            </div>
+            <!-- Humidity Card -->
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header">
+                        <i class="fas fa-tint"></i> Humidity
+                    </div>
+                    <div class="card-body">
+                        <div class="value-display" id="humidity-value">-- %</div>
+                        <canvas id="humidityChart" class="chart-container"></canvas>
+                    </div>
+                </div>
+            </div>
+            <!-- Light Card -->
+            <div class="col-md-4">
+                <div class="card light-card-light" id="lightCard">
+                    <div class="card-header">
+                        <i class="fas fa-lightbulb"></i> Light
+                    </div>
+                    <div class="card-body">
+                        <div class="value-display" id="light-value">-- lux</div>
+                        <p id="light-status" class="status-text">Light: OFF</p>
+                        <canvas id="lightChart" class="chart-container"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // InfluxDB Configuration
+        const INFLUX_URL = 'http://your-influxdb:8086';
+        const INFLUX_TOKEN = 'your-influxdb-token';
+        const INFLUX_ORG = 'your-org';
+        const INFLUX_BUCKET = 'your-bucket';
+
+        // MQTT Configuration
+        const MQTT_BROKER = 'your-mqtt-broker';
+        const MQTT_PORT = 9001;
+        const MQTT_TOPIC = 'home/light/control';
+        const clientId = 'dashboard_' + Math.random().toString(16).slice(3);
+        const mqttClient = new Paho.MQTT.Client(MQTT_BROKER, MQTT_PORT, clientId);
+
+        // Chart Configurations
+        const chartOptions = {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: { type: 'time', time: { unit: 'minute' }, grid: { color: 'rgba(0,0,0,0.1)' } },
+                y: { grid: { color: 'rgba(0,0,0,0.1)' } }
+            },
+            plugins: {
+                legend: { labels: { font: { size: 12 } } }
+            }
+        };
+
+        const temperatureChart = new Chart(document.getElementById('temperatureChart'), {
+            type: 'line',
+            data: { labels: [], datasets: [{ label: 'Temperature (°C)', data: [], borderColor: '#e74c3c', backgroundColor: 'rgba(231, 76, 60, 0.1)', fill: true }] },
+            options: chartOptions
+        });
+
+        const humidityChart = new Chart(document.getElementById('humidityChart'), {
+            type: 'line',
+            data: { labels: [], datasets: [{ label: 'Humidity (%)', data: [], borderColor: '#3498db', backgroundColor: 'rgba(52, 152, 219, 0.1)', fill: true }] },
+            options: chartOptions
+        });
+
+        const lightChart = new Chart(document.getElementById('lightChart'), {
+            type: 'line',
+            data: { labels: [], datasets: [{ label: 'Light (lux)', data: [], borderColor: '#2ecc71', backgroundColor: 'rgba(46, 204, 113, 0.1)', fill: true }] },
+            options: chartOptions
+        });
+
+        // Light Control State
+        let isLightOn = false;
+
+        // Fetch Data from InfluxDB
+        async function fetchData(measurement) {
+            const query = `
+                from(bucket: "${INFLUX_BUCKET}")
+                |> range(start: -1h)
+                |> filter(fn: (r) => r._measurement == "${measurement}")
+                |> last()
+            `;
+            const response = await fetch(`${INFLUX_URL}/api/v2/query?org=${INFLUX_ORG}`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Token ${INFLUX_TOKEN}`,
+                    'Content-Type': 'application/vnd.flux',
+                    'Accept': 'application/csv'
+                },
+                body: query
+            });
+            const text = await response.text();
+            const rows = text.split('\n').slice(1).filter(row => row);
+            return rows.map(row => {
+                const cols = row.split(',');
+                return { time: new Date(cols[3]), value: parseFloat(cols[6]) };
+            });
+        }
+
+        // Update Dashboard
+        async function updateDashboard() {
+            try {
+                const [tempData, humData, lightData] = await Promise.all([
+                    fetchData('temperature'),
+                    fetchData('humidity'),
+                    fetchData('light')
+                ]);
+
+                if (tempData.length) {
+                    document.getElementById('temperature-value').textContent = `${tempData[0].value.toFixed(1)} °C`;
+                    temperatureChart.data.labels = tempData.map(d => d.time);
+                    temperatureChart.data.datasets[0].data = tempData.map(d => d.value);
+                    temperatureChart.update();
+                }
+
+                if (humData.length) {
+                    document.getElementById('humidity-value').textContent = `${humData[0].value.toFixed(1)} %`;
+                    humidityChart.data.labels = humData.map(d => d.time);
+                    humidityChart.data.datasets[0].data = humData.map(d => d.value);
+                    humidityChart.update();
+                }
+
+                if (lightData.length) {
+                    document.getElementById('light-value').textContent = `${lightData[0].value.toFixed(1)} lux`;
+                    lightChart.data.labels = lightData.map(d => d.time);
+                    lightChart.data.datasets[0].data = lightData.map(d => d.value);
+                    lightChart.update();
+                }
+            } catch (error) {
+                console.error('Error updating dashboard:', error);
+            }
+        }
+
+        // MQTT Connection
+        mqttClient.onConnectionLost = () => console.error('MQTT connection lost');
+        mqttClient.connect({
+            onSuccess: () => {
+                console.log('MQTT connected');
+                mqttClient.subscribe(MQTT_TOPIC);
+            },
+            onFailure: (err) => console.error('MQTT connection failed:', err)
+        });
+
+        // Toggle Light and UI
+        const lightCard = document.getElementById('lightCard');
+        const lightStatus = document.getElementById('light-status');
+        lightCard.addEventListener('click', () => {
+            isLightOn = !isLightOn;
+            const state = isLightOn ? 'ON' : 'OFF';
+            lightStatus.textContent = `Light: ${state}`;
+            lightCard.classList.toggle('light-card-light', !isLightOn);
+            lightCard.classList.toggle('light-card-dark', isLightOn);
+            
+            // Send MQTT message
+            const message = new Paho.MQTT.Message(state);
+            message.destinationName = MQTT_TOPIC;
+            mqttClient.send(message);
+        });
+
+        // Initial Update and Periodic Refresh
+        updateDashboard();
+        setInterval(updateDashboard, 60000); // Update every minute
+    </script>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
