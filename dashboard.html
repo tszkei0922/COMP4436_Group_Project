@@ -9,7 +9,7 @@
     <!-- Font Awesome for Icons -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" rel="stylesheet">
     <!-- Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.min.js"></script>
     <!-- Paho MQTT -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
     <style>
@@ -139,9 +139,9 @@
     <script>
         // InfluxDB Configuration
         const INFLUX_URL = 'http://your-influxdb:8086';
-        const INFLUX_TOKEN = 'your-influxdb-token';
-        const INFLUX_ORG = 'your-org';
-        const INFLUX_BUCKET = 'your-bucket';
+        const INFLUX_TOKEN = 'k1YKqkvun2CVGuaDCFSzodwsiSoFdHkUsE7_rWBSzf0ubtsq7GYwKPycBbixT5vlt4mVCpxqDXeAe2Z5BYQzvQ==';
+        const INFLUX_ORG = '5023c10e3657904b';
+        const INFLUX_BUCKET = 'COMP4436';
 
         // MQTT Configuration
         const MQTT_BROKER = 'your-mqtt-broker';
@@ -202,6 +202,7 @@
                 body: query
             });
             const text = await response.text();
+            console.log(response.json());
             const rows = text.split('\n').slice(1).filter(row => row);
             return rows.map(row => {
                 const cols = row.split(',');
@@ -223,6 +224,7 @@
                     temperatureChart.data.labels = tempData.map(d => d.time);
                     temperatureChart.data.datasets[0].data = tempData.map(d => d.value);
                     temperatureChart.update();
+                    console.log(tempData);
                 }
 
                 if (humData.length) {
@@ -264,13 +266,16 @@
             lightCard.classList.toggle('light-card-dark', isLightOn);
             
             // Send MQTT message
-            const message = new Paho.MQTT.Message(state);
-            message.destinationName = MQTT_TOPIC;
-            mqttClient.send(message);
+           // const message = new Paho.MQTT.Message(state);
+           // message.destinationName = MQTT_TOPIC;
+           // mqttClient.send(message);
         });
 
         // Initial Update and Periodic Refresh
-        updateDashboard();
+       // updateDashboard();
+       fetchData('temperature');
+        fetchData('humidity');
+        fetchData('light');
         setInterval(updateDashboard, 60000); // Update every minute
     </script>
 

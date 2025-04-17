@@ -78,13 +78,6 @@ The project is ideal for IoT applications like environmental monitoring and demo
      - API Token
      - Organization ID
      - Bucket Name
-2. **Local InfluxDB**:
-   - Install:
-     ```bash
-     brew install influxdb
-     influxd
-     ```
-   - Open http://localhost:8086, create a bucket and token.
 
 ### 4. Configure Code
 The core code is in `main.py`, which reads sensor data and sends it to InfluxDB. Copy the following to `~/ESP32_MicroPython/main.py`:
