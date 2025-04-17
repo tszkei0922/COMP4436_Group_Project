@@ -13,6 +13,8 @@ PASSWORD = "98705058"
 dht11 = dht.DHT11(Pin(4))
 ldr = ADC(Pin(34))
 ldr.atten(ADC.ATTN_11DB)
+# light
+led = Pin(2, Pin.OUT)  # Assuming GPIO 2 controls the LED
 
 # InfluxDB Configuration
 INFLUXDB_URL = "https://us-east-1-1.aws.cloud2.influxdata.com"
@@ -22,11 +24,12 @@ INFLUXDB_BUCKET = "COMP4436"
 INFLUXDB_URL_WRITE = f"{INFLUXDB_URL}/api/v2/write?org={INFLUXDB_ORG}&bucket={INFLUXDB_BUCKET}&precision=s"
 
 # ThingSpeak Configuration
-THINGSPEAK_API_KEY = "YOUR_THINGSPEAK_API_KEY"  # Replace with your ThingSpeak API key
-THINGSPEAK_URL = "https://api.thingspeak.com/update.json"
+THINGSPEAK_API_KEY = "LXVQ1QE811NENX3T"  # Replace with your ThingSpeak API key
+THINGSPEAK_URL = "https://api.thingspeak.com/update"
+THINGSPEAK_CHANNEL_ID = "2923878"  # Replace with your ThingSpeak channel ID
 
 # Mode Configuration
-LEARNING_MODE = False  # Set to True for learning mode, False for smart mode
+LEARNING_MODE = True  # Set to True for learning mode, False for smart mode
 
 # Light Control
 LIGHT_PIN = Pin(2, Pin.OUT)  # Assuming GPIO 2 controls the light
@@ -53,13 +56,14 @@ def send_to_thingspeak(temp, hum, ldr_value, prediction=None):
     try:
         payload = {
             "api_key": THINGSPEAK_API_KEY,
-            "field1": temp,
-            "field2": hum,
-            "field3": ldr_value
+            "temperature": temp,
+            "humidity": hum,
+            "light": ldr_value,
+            "LED": led.value(),
         }
-        
-            
-        response = urequests.post(THINGSPEAK_URL, json=payload)
+        url = THINGSPEAK_URL + f"?api_key={THINGSPEAK_API_KEY}&temperature={temp}&humidity={hum}&light={ldr_value}&LED={led.value()}"
+        print(f"Sending data to ThingSpeak: {url}")
+        response = urequests.get(url)
         if response.status_code == 200:
             print("Data sent to ThingSpeak successfully")
         else:
@@ -122,6 +126,8 @@ def read_ldr():
     except Exception as e:
         print("LDR Error:", e)
         return None
+    
+
 
 def send_to_influxdb(temp, hum, ldr_value):
     if temp is None or hum is None or ldr_value is None:
@@ -170,7 +176,6 @@ def smart_mode_loop():
                 LIGHT_PIN.value(prediction)
                 light_status = "ON" if prediction == 1 else "OFF"
                 print(f"Light set to {light_status}")
-        
         time.sleep(60)
 
 def main():
