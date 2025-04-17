@@ -1,0 +1,13 @@
+{
+    "address": "/dev/cu.usbserial-A5069RR4",
+    "username": "micro",
+    "password": "python",
+    "sync_folder": "",
+    "open_on_start": true,
+    "safe_boot_on_upload": false,
+    "sync_file_types": "py,txt,log,json,xml,html,js,css,mpy",
+    "ctrl_c_on_connect": false,
+    "sync_all_file_types": false,
+    "auto_connect": true
+  }
+  
