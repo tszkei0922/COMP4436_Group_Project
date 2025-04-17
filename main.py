@@ -30,7 +30,7 @@ MQTT_TOPIC_SEND = "esp32/sensor_data"
 MQTT_TOPIC_RECEIVE = "esp32/predicted_light"
 
 # Mode Configuration
-LEARNING_MODE = True  # Set to False for smart mode
+LEARNING_MODE = False  # Set to False for smart mode
 
 def connect_wifi(ssid, password):
     wlan = network.WLAN(network.STA_IF)
@@ -125,7 +125,7 @@ def smart_mode_loop(mqtt_client):
             print(f"Sent sensor data for prediction: Temp={temp}°C, Humidity={hum}%")
             
             # Check for incoming messages (predictions)
-            mqtt_client.check_msg()
+            mqtt_client.wait_msg()
         
         time.sleep(60)
 
