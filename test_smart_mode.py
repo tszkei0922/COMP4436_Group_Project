@@ -21,12 +21,38 @@ def on_connect(client, userdata, flags, rc):
     print(f"Subscribed to {MQTT_TOPIC_SEND}")
 
 def on_message(client, userdata, msg):
-    """Handle incoming prediction messages"""
+    """Handle incoming MQTT messages with binary light predictions"""
     try:
-        prediction = float(msg.payload.decode())
-        print(f"\nReceived prediction: {prediction:.1f}")
+        # First check if we received the correct topic
+        if msg.topic != MQTT_TOPIC_SEND:
+            return
+            
+        # Safely decode the message
+        try:
+            msg_str = msg.payload.decode()
+        except Exception as e:
+            print("Error decoding message:", e)
+            return
+            
+        # Convert to integer and validate
+        try:
+            predicted_light = int(msg_str)
+        except ValueError:
+            print("Error: Message is not a valid integer")
+            return
+            
+        # Validate the prediction value
+        if predicted_light not in [0, 1]:
+            print("Error: Invalid prediction value:", predicted_light)
+            return
+            
+        # Print the prediction result
+        light_status = "ON" if predicted_light == 1 else "OFF"
+        print(f"Received prediction: Light should be {light_status}")
+            
     except Exception as e:
-        print(f"Error processing prediction: {e}")
+        print("Error in message handler:", e)
+        # Don't re-raise the exception to prevent MQTT client from crashing
 
 def simulate_sensor_data():
     """Generate random sensor data within reasonable ranges"""
@@ -52,6 +78,7 @@ def setup_mqtt():
 
 def main():
     print("Starting Smart Mode Test")
+    print("This test will simulate sensor data and receive light predictions (0=OFF, 1=ON)")
     
     # Setup MQTT connection
     client = setup_mqtt()
@@ -65,16 +92,21 @@ def main():
     try:
         print(f"\nTest will run for {TEST_DURATION} seconds")
         print(f"Sending data every {SEND_INTERVAL} seconds")
+        print("\nWaiting for predictions...")
         
         start_time = time.time()
         while time.time() - start_time < TEST_DURATION:
-            # Generate and send sensor data
-            sensor_data = simulate_sensor_data()
-            client.publish(MQTT_TOPIC_RECEIVE, json.dumps(sensor_data))
-            
-            print(f"\nSent sensor data:")
-            print(f"Temperature: {sensor_data['temperature']}°C")
-            print(f"Humidity: {sensor_data['humidity']}%")
+            try:
+                # Generate and send sensor data
+                sensor_data = simulate_sensor_data()
+                client.publish(MQTT_TOPIC_RECEIVE, json.dumps(sensor_data))
+                
+                print(f"\nSent sensor data:")
+                print(f"Temperature: {sensor_data['temperature']}°C")
+                print(f"Humidity: {sensor_data['humidity']}%")
+                
+            except Exception as e:
+                print(f"Error sending sensor data: {e}")
             
             # Wait for next interval
             time.sleep(SEND_INTERVAL)

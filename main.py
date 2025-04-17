@@ -161,7 +161,7 @@ def smart_mode_loop(mqtt_client):
             print(f"Sent sensor data for prediction: Temp={temp}°C, Humidity={hum}%")
             
             # Check for incoming messages (predictions)
-            mqtt_client.check_msg()
+            mqtt_client.wait_msg()
         
         time.sleep(60)
 
