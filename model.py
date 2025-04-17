@@ -102,8 +102,11 @@ def make_prediction(temp, hum):
         return None
     
     try:
-        prediction = current_model.predict([[temp, hum]])[0]
-        return int(prediction)  # Ensure integer output
+        # Get probability of class 1
+        prob = current_model.predict_proba([[temp, hum]])[0][1]
+        # Convert to binary using 0.5 threshold
+        prediction = 1 if prob >= 0.5 else 0
+        return prediction
     except Exception as e:
         print(f"Error making prediction: {e}")
         return None
@@ -128,7 +131,7 @@ def on_message(client, userdata, msg):
         prediction = make_prediction(temp, hum)
         
         if prediction is not None:
-            # Send prediction back via MQTT
+            # Send binary prediction (0 or 1) back via MQTT
             client.publish(MQTT_TOPIC_SEND, str(prediction))
             light_status = "ON" if prediction == 1 else "OFF"
             print(f"Sent prediction: Light should be {light_status}")
