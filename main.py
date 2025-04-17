@@ -5,6 +5,9 @@ import dht
 import urequests
 from umqtt.simple import MQTTClient
 import json
+import random
+import ubinascii
+import machine
 
 # WiFi Configuration
 SSID = "Thunderstorm3"
@@ -14,6 +17,7 @@ PASSWORD = "98705058"
 dht11 = dht.DHT11(Pin(4))
 ldr = ADC(Pin(34))
 ldr.atten(ADC.ATTN_11DB)
+led = Pin(2, Pin.OUT)  # LED pin for status indication
 
 # InfluxDB Configuration
 INFLUXDB_URL = "https://us-east-1-1.aws.cloud2.influxdata.com"
@@ -50,17 +54,30 @@ def connect_wifi(ssid, password):
     return True
 
 def connect_mqtt():
-    client = MQTTClient(MQTT_CLIENT_ID, MQTT_BROKER, MQTT_PORT)
-    client.set_callback(on_mqtt_message)
-    client.connect()
-    client.subscribe(MQTT_TOPIC_RECEIVE)
-    print("Connected to MQTT broker")
-    return client
+    # Generate a unique client ID using the ESP32's unique ID
+    client_id = f"{MQTT_CLIENT_ID}_{ubinascii.hexlify(machine.unique_id()).decode()}"
+    
+    try:
+        client = MQTTClient(client_id, MQTT_BROKER, MQTT_PORT, keepalive=30)
+        client.set_callback(on_mqtt_message)
+        client.connect()
+        client.subscribe(MQTT_TOPIC_RECEIVE)
+        print(f"Connected to MQTT broker with ID: {client_id}")
+        return client
+    except Exception as e:
+        print(f"MQTT connection failed: {str(e)}")
+        return None
 
 def on_mqtt_message(topic, msg):
     if topic.decode() == MQTT_TOPIC_RECEIVE:
-        predicted_light = float(msg.decode())
-        print(f"Received predicted light value: {predicted_light:.1f}")
+        predicted_light = int (msg.decode())
+        print(f"Received predicted light value: {predicted_light}")
+        if predicted_light > 0:
+            led.value(1)  # Turn on LED
+            print("LED ON")
+        else:
+            led.value(0)  # Turn off LED
+            print("LED OFF")
         # You can add code here to handle the predicted value
         # For example, store it or use it for control logic
 
@@ -69,7 +86,7 @@ def read_dht11():
         dht11.measure()
         temp = dht11.temperature()
         hum = dht11.humidity()
-        print(f"Temperature: {temp}°C, Humidity: {hum}%")
+        print(f"Temperature: {temp} Celsius, Humidity: {hum}%")
         return temp, hum
     except OSError as e:
         print("DHT11 read error:", e)
@@ -114,20 +131,37 @@ def learning_mode_loop(mqtt_client):
 
 def smart_mode_loop(mqtt_client):
     while True:
-        temp, hum = read_dht11()
-        if temp is not None and hum is not None:
-            # Send sensor data to model.py via MQTT
-            data = json.dumps({
-                "temperature": temp,
-                "humidity": hum
-            })
-            mqtt_client.publish(MQTT_TOPIC_SEND, data)
-            print(f"Sent sensor data for prediction: Temp={temp}°C, Humidity={hum}%")
-            
-            # Check for incoming messages (predictions)
-            mqtt_client.wait_msg()
+        if mqtt_client is None:
+            print("Attempting to connect to MQTT...")
+            mqtt_client = connect_mqtt()
+            if mqtt_client is None:
+                print("Failed to connect to MQTT. Retrying in 30 seconds...")
+                time.sleep(30)
+                continue
+                
+        try:
+            temp, hum = read_dht11()
+            if temp is not None and hum is not None:
+                data = json.dumps({
+                    "temperature": temp,
+                    "humidity": hum
+                })
+                mqtt_client.publish(MQTT_TOPIC_SEND, data)
+                print(f"Sent sensor data: Temp={temp}°C, Humidity={hum}%")
+                
+                # Check for messages with timeout
+                mqtt_client.wait_msg()
+                
+        except Exception as e:
+            print(f"Error in smart mode loop: {str(e)}")
+            try:
+                mqtt_client.disconnect()
+            except:
+                pass
+            mqtt_client = None
+            time.sleep(5)
         
-        time.sleep(60)
+        time.sleep(5)  # Reduced sleep time for more frequent updates
 
 def main():
     if connect_wifi(SSID, PASSWORD):

@@ -2,8 +2,8 @@ from influxdb_client import InfluxDBClient
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LinearRegression
-from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, classification_report
 import time
 import pickle
 import os
@@ -68,8 +68,8 @@ def get_data_from_influxdb():
         return None
 
 def train_model(X, y):
-    """Train a linear regression model"""
-    model = LinearRegression()
+    """Train a logistic regression model"""
+    model = LogisticRegression()
     model.fit(X, y)
     return model
 
@@ -100,6 +100,7 @@ def make_prediction(temp, hum):
         return None
     
     try:
+        # Get binary prediction (0 or 1)
         prediction = current_model.predict([[temp, hum]])[0]
         return prediction
     except Exception as e:
@@ -120,7 +121,7 @@ def on_message(client, userdata, msg):
         temp = data['temperature']
         hum = data['humidity']
         print(f"\nReceived request for prediction:")
-        print(f"Temperature: {temp}°C, Humidity: {hum}%")
+        print(f"Temperature: {temp}Â°C, Humidity: {hum}%")
 
         # Make prediction
         prediction = make_prediction(temp, hum)
@@ -128,7 +129,7 @@ def on_message(client, userdata, msg):
         if prediction is not None:
             # Send prediction back via MQTT
             client.publish(MQTT_TOPIC_SEND, str(prediction))
-            print(f"Sent prediction: {prediction:.1f}")
+            print(f"Sent prediction: {prediction}")
         
     except Exception as e:
         print(f"Error processing message: {e}")
@@ -147,7 +148,11 @@ def train_model_periodically():
         if df is not None and len(df) > 10:
             # Prepare data
             X = df[['temperature', 'humidity']].values
-            y = df['light'].values
+            
+            # Convert light values to binary classification (1 if light > threshold, 0 otherwise)
+            # Using median as threshold for binary classification
+            light_threshold = df['light'].median()
+            y = (df['light'] > light_threshold).astype(int)
             
             # Train model
             print("Training new model...")
@@ -155,12 +160,12 @@ def train_model_periodically():
             
             # Evaluate model
             predictions = model.predict(X)
-            mse = mean_squared_error(y, predictions)
-            r2 = r2_score(y, predictions)
+            accuracy = accuracy_score(y, predictions)
             
             print("Model Performance:")
-            print(f"Mean Squared Error: {mse:.2f}")
-            print(f"R² Score: {r2:.2f}")
+            print(f"Accuracy: {accuracy:.2f}")
+            print("\nClassification Report:")
+            print(classification_report(y, predictions))
             
             # Update current model
             current_model = model
