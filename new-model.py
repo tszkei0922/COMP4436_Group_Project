@@ -12,6 +12,7 @@ import ssl
 import paho.mqtt.client as mqtt
 import json
 import threading
+from datetime import datetime
 
 # Disable SSL verification warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -60,7 +61,13 @@ def get_data_from_influxdb():
             print("No data retrieved from InfluxDB")
             return None
             
-        df = result[['temperature', 'humidity', 'light']].copy()
+        # Convert time to datetime and extract time features
+        df = result[['_time', 'temperature', 'humidity', 'light']].copy()
+        df['hour'] = df['_time'].dt.hour
+        df['minute'] = df['_time'].dt.minute
+        df['day_of_week'] = df['_time'].dt.dayofweek
+        df['is_night'] = ((df['hour'] >= 20) | (df['hour'] <= 6)).astype(int)
+        
         return df
     
     except Exception as e:
@@ -68,7 +75,7 @@ def get_data_from_influxdb():
         return None
 
 def train_model(X, y):
-    """Train a logistic regression model"""
+    """Train a logistic regression model with time features"""
     model = LogisticRegression()
     model.fit(X, y)
     return model
@@ -92,16 +99,28 @@ def load_model(filename='light_predictor_model.pkl'):
             print(f"Error loading model: {e}")
     return None
 
-def make_prediction(temp, hum):
-    """Make a prediction using the current model"""
+def make_prediction(temp, hum, current_time=None):
+    """Make a prediction using the current model with time features"""
     global current_model
     if current_model is None:
         print("No model available for prediction")
         return None
     
     try:
+        if current_time is None:
+            current_time = datetime.now()
+        
+        # Create time features for prediction
+        hour = current_time.hour
+        minute = current_time.minute
+        day_of_week = current_time.weekday()
+        is_night = 1 if (hour >= 20 or hour <= 6) else 0
+        
+        # Prepare features array with time features
+        features = np.array([[temp, hum, hour, minute, day_of_week, is_night]])
+        
         # Get binary prediction (0 or 1)
-        prediction = current_model.predict([[temp, hum]])[0]
+        prediction = current_model.predict(features)[0]
         return prediction
     except Exception as e:
         print(f"Error making prediction: {e}")
@@ -123,7 +142,7 @@ def on_message(client, userdata, msg):
         print(f"\nReceived request for prediction:")
         print(f"Temperature: {temp}Â°C, Humidity: {hum}%")
 
-        # Make prediction
+        # Make prediction with current time
         prediction = make_prediction(temp, hum)
         
         if prediction is not None:
@@ -146,11 +165,10 @@ def train_model_periodically():
         df = get_data_from_influxdb()
         
         if df is not None and len(df) > 10:
-            # Prepare data
-            X = df[['temperature', 'humidity']].values
+            # Prepare data with time features
+            X = df[['temperature', 'humidity', 'hour', 'minute', 'day_of_week', 'is_night']].values
             
             # Convert light values to binary classification (1 if light > threshold, 0 otherwise)
-            # Using median as threshold for binary classification
             light_threshold = df['light'].median()
             y = (df['light'] > light_threshold).astype(int)
             

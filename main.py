@@ -136,7 +136,7 @@ def smart_mode_loop(mqtt_client):
             mqtt_client = connect_mqtt()
             if mqtt_client is None:
                 print("Failed to connect to MQTT. Retrying in 30 seconds...")
-                time.sleep(30)
+                time.sleep(5)
                 continue
                 
         try:
