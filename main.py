@@ -3,7 +3,6 @@ import time
 from machine import Pin, ADC, I2C
 import dht
 import urequests
-from umqtt.simple import MQTTClient
 import json
 
 # WiFi Configuration
@@ -22,12 +21,9 @@ INFLUXDB_ORG = "5023c10e3657904b"
 INFLUXDB_BUCKET = "COMP4436"
 INFLUXDB_URL_WRITE = f"{INFLUXDB_URL}/api/v2/write?org={INFLUXDB_ORG}&bucket={INFLUXDB_BUCKET}&precision=s"
 
-# MQTT Configuration
-MQTT_BROKER = "broker.hivemq.com"  # Free public MQTT broker
-MQTT_PORT = 1883
-MQTT_CLIENT_ID = "esp32_sensor"
-MQTT_TOPIC_SEND = "esp32/sensor_data"
-MQTT_TOPIC_RECEIVE = "esp32/predicted_light"
+# ThingSpeak Configuration
+THINGSPEAK_API_KEY = "YOUR_THINGSPEAK_API_KEY"  # Replace with your ThingSpeak API key
+THINGSPEAK_URL = "https://api.thingspeak.com/update.json"
 
 # Mode Configuration
 LEARNING_MODE = False  # Set to True for learning mode, False for smart mode
@@ -52,51 +48,59 @@ def connect_wifi(ssid, password):
     print("Successfully connected! IP address:", wlan.ifconfig()[0])
     return True
 
-def connect_mqtt():
-    client = MQTTClient(MQTT_CLIENT_ID, MQTT_BROKER, MQTT_PORT)
-    client.set_callback(on_mqtt_message)
-    client.connect()
-    client.subscribe(MQTT_TOPIC_RECEIVE)
-    print("Connected to MQTT broker")
-    return client
-
-def on_mqtt_message(topic, msg):
-    """Handle incoming MQTT messages with binary light predictions"""
+def send_to_thingspeak(temp, hum, ldr_value, prediction=None):
+    """Send data to ThingSpeak"""
     try:
-        # First check if we received the correct topic
-        if topic.decode() != MQTT_TOPIC_RECEIVE:
-            return
+        payload = {
+            "api_key": THINGSPEAK_API_KEY,
+            "field1": temp,
+            "field2": hum,
+            "field3": ldr_value
+        }
+        
             
-        # Safely decode the message
-        try:
-            msg_str = msg.decode()
-        except Exception as e:
-            print("Error decoding message:", e)
-            return
-            
-        # Convert to integer and validate
-        try:
-            predicted_light = int(msg_str)
-        except ValueError:
-            print("Error: Message is not a valid integer")
-            return
-            
-        # Validate the prediction value
-        if predicted_light not in [0, 1]:
-            print("Error: Invalid prediction value:", predicted_light)
-            return
-            
-        # Control the light based on prediction
-        try:
-            LIGHT_PIN.value(predicted_light)
-            light_status = "ON" if predicted_light == 1 else "OFF"
-            print(f"Light set to {light_status}")
-        except Exception as e:
-            print("Error controlling light:", e)
+        response = urequests.post(THINGSPEAK_URL, json=payload)
+        if response.status_code == 200:
+            print("Data sent to ThingSpeak successfully")
+        else:
+            print(f"Failed to send data to ThingSpeak. Status code: {response.status_code}")
+        response.close()
+    except Exception as e:
+        print(f"Error sending data to ThingSpeak: {e}")
+
+def get_prediction_from_thingspeak():
+    """Get the latest prediction from ThingSpeak"""
+    try:
+        url = f"https://api.thingspeak.com/channels/{THINGSPEAK_CHANNEL_ID}/feeds.json"
+        params = {
+            "api_key": THINGSPEAK_API_KEY,
+            "results": 1
+        }
+        
+        # Set a timeout of 5 seconds
+        response = urequests.get(url, params=params, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            if data['feeds']:
+                latest_feed = data['feeds'][0]
+                prediction = int(latest_feed['field4'])
+                return prediction
+            else:
+                print("No feeds available in ThingSpeak")
+                return None
+        else:
+            print(f"Failed to get prediction. Status code: {response.status_code}")
+            return None
             
     except Exception as e:
-        print("Error in message handler:", e)
-        # Don't re-raise the exception to prevent MQTT client from crashing
+        print(f"Error getting prediction from ThingSpeak: {e}")
+        return None
+    finally:
+        try:
+            response.close()
+        except:
+            pass  # Ignore error if response is None
 
 def read_dht11():
     try:
@@ -139,29 +143,33 @@ def send_to_influxdb(temp, hum, ldr_value):
     except Exception as e:
         print("InfluxDB Error:", e)
 
-def learning_mode_loop(mqtt_client):
+def learning_mode_loop():
     """Collect sensor data and send to InfluxDB for model training"""
     while True:
         temp, hum = read_dht11()
         ldr_value = read_ldr()
         send_to_influxdb(temp, hum, ldr_value)
+        send_to_thingspeak(temp, hum, ldr_value)
         time.sleep(60)
 
-def smart_mode_loop(mqtt_client):
+def smart_mode_loop():
     """Use ML model to control light based on sensor data"""
     while True:
         temp, hum = read_dht11()
-        if temp is not None and hum is not None:
-            # Send sensor data to model.py via MQTT
-            data = json.dumps({
-                "temperature": temp,
-                "humidity": hum
-            })
-            mqtt_client.publish(MQTT_TOPIC_SEND, data)
-            print(f"Sent sensor data for prediction: Temp={temp}°C, Humidity={hum}%")
+        ldr_value = read_ldr()
+        
+        if temp is not None and hum is not None and ldr_value is not None:
+            # Send sensor data to ThingSpeak
+            send_to_thingspeak(temp, hum, ldr_value)
             
-            # Check for incoming messages (predictions)
-            mqtt_client.wait_msg()
+            # Get prediction from ThingSpeak
+            prediction = get_prediction_from_thingspeak()
+            
+            if prediction is not None:
+                # Control the light based on prediction
+                LIGHT_PIN.value(prediction)
+                light_status = "ON" if prediction == 1 else "OFF"
+                print(f"Light set to {light_status}")
         
         time.sleep(60)
 
@@ -170,16 +178,14 @@ def main():
     LIGHT_PIN.value(0)
     
     if connect_wifi(SSID, PASSWORD):
-        mqtt_client = connect_mqtt()
-        
         if LEARNING_MODE:
             print("Running in Learning Mode")
             print("Collecting sensor data for model training...")
-            learning_mode_loop(mqtt_client)
+            learning_mode_loop()
         else:
             print("Running in Smart Mode")
             print("Using ML model to control light...")
-            smart_mode_loop(mqtt_client)
+            smart_mode_loop()
     else:
         print("WiFi connection failed, exiting...")
 

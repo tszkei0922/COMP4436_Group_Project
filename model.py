@@ -9,7 +9,7 @@ import pickle
 import os
 import urllib3
 import ssl
-import paho.mqtt.client as mqtt
+import requests
 import json
 import threading
 
@@ -23,16 +23,13 @@ INFLUXDB_TOKEN = "k1YKqkvun2CVGuaDCFSzodwsiSoFdHkUsE7_rWBSzf0ubtsq7GYwKPycBbixT5
 INFLUXDB_ORG = "5023c10e3657904b"
 INFLUXDB_BUCKET = "COMP4436"
 
-# MQTT Configuration
-MQTT_BROKER = "broker.hivemq.com"
-MQTT_PORT = 1883
-MQTT_CLIENT_ID = "model_predictor"
-MQTT_TOPIC_RECEIVE = "esp32/sensor_data"
-MQTT_TOPIC_SEND = "esp32/predicted_light"
+# ThingSpeak Configuration
+THINGSPEAK_API_KEY = "YOUR_THINGSPEAK_API_KEY"  # Replace with your ThingSpeak API key
+THINGSPEAK_CHANNEL_ID = "YOUR_CHANNEL_ID"  # Replace with your ThingSpeak channel ID
+THINGSPEAK_URL = f"https://api.thingspeak.com/channels/{THINGSPEAK_CHANNEL_ID}/feeds.json"
 
 # Global variables
 current_model = None
-mqtt_client = None
 
 def get_data_from_influxdb():
     """Retrieve data from InfluxDB"""
@@ -111,33 +108,60 @@ def make_prediction(temp, hum):
         print(f"Error making prediction: {e}")
         return None
 
-# MQTT Callbacks
-def on_connect(client, userdata, flags, rc):
-    print(f"Connected to MQTT broker with result code {rc}")
-    client.subscribe(MQTT_TOPIC_RECEIVE)
-    print(f"Subscribed to {MQTT_TOPIC_RECEIVE}")
-
-def on_message(client, userdata, msg):
-    """Handle incoming MQTT messages"""
+def send_to_thingspeak(temp, hum, prediction):
+    """Send data to ThingSpeak"""
     try:
-        # Parse the incoming JSON message
-        data = json.loads(msg.payload.decode())
-        temp = data['temperature']
-        hum = data['humidity']
-        print(f"\nReceived request for prediction:")
-        print(f"Temperature: {temp}°C, Humidity: {hum}%")
-
-        # Make prediction
-        prediction = make_prediction(temp, hum)
+        url = f"https://api.thingspeak.com/update.json"
+        payload = {
+            "api_key": THINGSPEAK_API_KEY,
+            "field1": temp,
+            "field2": hum,
+            "field3": prediction
+        }
         
-        if prediction is not None:
-            # Send binary prediction (0 or 1) back via MQTT
-            client.publish(MQTT_TOPIC_SEND, str(prediction))
-            light_status = "ON" if prediction == 1 else "OFF"
-            print(f"Sent prediction: Light should be {light_status}")
-        
+        response = requests.post(url, data=payload)
+        if response.status_code == 200:
+            print("Data sent to ThingSpeak successfully")
+        else:
+            print(f"Failed to send data to ThingSpeak. Status code: {response.status_code}")
     except Exception as e:
-        print(f"Error processing message: {e}")
+        print(f"Error sending data to ThingSpeak: {e}")
+
+def get_latest_sensor_data():
+    """Get the latest sensor data from ThingSpeak"""
+    try:
+        response = requests.get(THINGSPEAK_URL, params={"api_key": THINGSPEAK_API_KEY, "results": 1})
+        if response.status_code == 200:
+            data = response.json()
+            if data['feeds']:
+                latest_feed = data['feeds'][0]
+                return {
+                    'temperature': float(latest_feed['field1']),
+                    'humidity': float(latest_feed['field2'])
+                }
+        return None
+    except Exception as e:
+        print(f"Error getting data from ThingSpeak: {e}")
+        return None
+
+def prediction_loop():
+    """Main loop for making predictions and sending to ThingSpeak"""
+    global current_model
+    
+    while True:
+        # Get latest sensor data from ThingSpeak
+        sensor_data = get_latest_sensor_data()
+        
+        if sensor_data is not None:
+            # Make prediction
+            prediction = make_prediction(sensor_data['temperature'], sensor_data['humidity'])
+            
+            if prediction is not None:
+                # Send prediction back to ThingSpeak
+                send_to_thingspeak(sensor_data['temperature'], sensor_data['humidity'], prediction)
+                print(f"Prediction made: Light should be {'ON' if prediction == 1 else 'OFF'}")
+        
+        time.sleep(60)  # Check every minute
 
 def train_model_periodically():
     """Periodic model training function"""
@@ -179,23 +203,8 @@ def train_model_periodically():
         print("\nWaiting 5 minutes until next training cycle...")
         time.sleep(300)  # Wait 5 minutes before next training
 
-def setup_mqtt():
-    """Setup MQTT client and connection"""
-    global mqtt_client
-    
-    mqtt_client = mqtt.Client(client_id=MQTT_CLIENT_ID)
-    mqtt_client.on_connect = on_connect
-    mqtt_client.on_message = on_message
-    
-    try:
-        mqtt_client.connect(MQTT_BROKER, MQTT_PORT, 60)
-        return True
-    except Exception as e:
-        print(f"Failed to connect to MQTT broker: {e}")
-        return False
-
 def main():
-    global current_model, mqtt_client
+    global current_model
     
     print("Starting Light Prediction Service")
     print("Model will predict binary light status (0=OFF, 1=ON)")
@@ -207,18 +216,15 @@ def main():
     else:
         print("No existing model found - will train new model")
     
-    # Setup MQTT connection
-    if not setup_mqtt():
-        print("Failed to setup MQTT. Exiting...")
-        return
-    
-    # Start MQTT loop in a separate thread
-    mqtt_client.loop_start()
-    
     # Start training loop in a separate thread
     training_thread = threading.Thread(target=train_model_periodically)
     training_thread.daemon = True
     training_thread.start()
+    
+    # Start prediction loop in a separate thread
+    prediction_thread = threading.Thread(target=prediction_loop)
+    prediction_thread.daemon = True
+    prediction_thread.start()
     
     try:
         print("\nService is running. Press Ctrl+C to exit.")
@@ -227,8 +233,6 @@ def main():
     
     except KeyboardInterrupt:
         print("\nShutting down...")
-        mqtt_client.loop_stop()
-        mqtt_client.disconnect()
 
 if __name__ == "__main__":
     main()
