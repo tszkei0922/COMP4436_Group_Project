@@ -21,9 +21,11 @@ led = Pin(2, Pin.OUT)  # LED pin for status indication
 
 # InfluxDB Configuration
 INFLUXDB_URL = "https://us-east-1-1.aws.cloud2.influxdata.com"
-INFLUXDB_TOKEN = "k1YKqkvun2CVGuaDCFSzodwsiSoFdHkUsE7_rWBSzf0ubtsq7GYwKPycBbixT5vlt4mVCpxqDXeAe2Z5BYQzvQ=="
+# INFLUXDB_TOKEN = "k1YKqkvun2CVGuaDCFSzodwsiSoFdHkUsE7_rWBSzf0ubtsq7GYwKPycBbixT5vlt4mVCpxqDXeAe2Z5BYQzvQ=="
+INFLUXDB_TOKEN = "QDDpmXr8jhPNEg4F5qV-pJVHs6GxGWgXcQHMmbdjNESY06ohnrNyTngVRS5aFZ8wp0b-3HGHi6pEtbLv-kIdjw==" #new
 INFLUXDB_ORG = "5023c10e3657904b"
-INFLUXDB_BUCKET = "COMP4436"
+#INFLUXDB_BUCKET = "COMP4436"
+INFLUXDB_BUCKET = "COMP4436-2"
 INFLUXDB_URL_WRITE = f"{INFLUXDB_URL}/api/v2/write?org={INFLUXDB_ORG}&bucket={INFLUXDB_BUCKET}&precision=s"
 
 # MQTT Configuration
@@ -34,7 +36,7 @@ MQTT_TOPIC_SEND = "esp32/sensor_data"
 MQTT_TOPIC_RECEIVE = "esp32/predicted_light"
 
 # Mode Configuration
-LEARNING_MODE = False  # Set to False for smart mode
+LEARNING_MODE = True  # Set to False for smart mode
 
 def connect_wifi(ssid, password):
     wlan = network.WLAN(network.STA_IF)
@@ -72,7 +74,7 @@ def on_mqtt_message(topic, msg):
     if topic.decode() == MQTT_TOPIC_RECEIVE:
         predicted_light = int (msg.decode())
         print(f"Received predicted light value: {predicted_light}")
-        if predicted_light > 0:
+        if predicted_light == 0:
             led.value(1)  # Turn on LED
             print("LED ON")
         else:
@@ -95,9 +97,9 @@ def read_dht11():
 def read_ldr():
     try:
         ldr_value = ldr.read()
-        light_percent = (ldr_value / 4095) * 100
-        print(f"Light Value: {ldr_value} (Around {light_percent:.1f}%)")
-        return ldr_value
+        light_binary = 1 if ldr_value > 2047 else 0
+        print(f"Light Value: {ldr_value} (Binary: {light_binary})")
+        return light_binary
     except Exception as e:
         print("LDR Error:", e)
         return None
@@ -124,6 +126,7 @@ def send_to_influxdb(temp, hum, ldr_value):
 
 def learning_mode_loop(mqtt_client):
     while True:
+        led.value(0)
         temp, hum = read_dht11()
         ldr_value = read_ldr()
         send_to_influxdb(temp, hum, ldr_value)
@@ -166,10 +169,10 @@ def smart_mode_loop(mqtt_client):
 def main():
     if connect_wifi(SSID, PASSWORD):
         mqtt_client = connect_mqtt()
-        
         if LEARNING_MODE:
             print("Running in Learning Mode")
             learning_mode_loop(mqtt_client)
+             # Turn on LED to indicate learning mode
         else:
             print("Running in Smart Mode")
             smart_mode_loop(mqtt_client)
