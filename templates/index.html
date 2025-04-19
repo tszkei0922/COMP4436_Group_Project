@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 Sensor Dashboard</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        :root {
+            --primary-color: #2196F3;
+            --secondary-color: #4CAF50;
+            --warning-color: #FFC107;
+            --danger-color: #F44336;
+            --background-color: #f8f9fa;
+            --card-background: rgba(255, 255, 255, 0.9);
+            --text-primary: #333333;
+            --text-secondary: #666666;
+            --overlay-color: rgba(0, 0, 0, 0.4);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Roboto', sans-serif;
+            color: var(--text-primary);
+            line-height: 1.6;
+            min-height: 100vh;
+            background: linear-gradient(var(--overlay-color), var(--overlay-color)),
+                        url('https://images.unsplash.com/photo-1600585154340-be6161a56a0c?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2070&q=80');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            position: relative;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding: 30px;
+            background: linear-gradient(135deg, rgba(33, 150, 243, 0.9), rgba(25, 118, 210, 0.9));
+            color: white;
+            border-radius: 15px;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+            backdrop-filter: blur(5px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            font-weight: 500;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 25px;
+            margin-bottom: 40px;
+        }
+
+        .card {
+            background: var(--card-background);
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+            backdrop-filter: blur(5px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 24px rgba(0, 0, 0, 0.15);
+            background: rgba(255, 255, 255, 0.95);
+        }
+
+        .card h3 {
+            font-size: 1.2em;
+            font-weight: 500;
+            color: var(--text-secondary);
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .card h3::before {
+            content: '';
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: var(--primary-color);
+        }
+
+        .value {
+            font-size: 2.5em;
+            font-weight: 700;
+            margin: 10px 0;
+            color: var(--primary-color);
+        }
+
+        .unit {
+            font-size: 0.6em;
+            font-weight: 400;
+            color: var(--text-secondary);
+        }
+
+        .chart-container {
+            background: var(--card-background);
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+            backdrop-filter: blur(5px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 25px;
+            margin-top: 20px;
+        }
+
+        .chart-wrapper {
+            background: var(--card-background);
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(5px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .chart-title {
+            font-size: 1.2em;
+            font-weight: 500;
+            color: var(--text-primary);
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        .timestamp {
+            text-align: center;
+            color: white;
+            font-size: 0.9em;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            backdrop-filter: blur(5px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .status-on {
+            background-color: var(--secondary-color);
+            box-shadow: 0 0 10px var(--secondary-color);
+        }
+
+        .status-off {
+            background-color: var(--danger-color);
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+
+        @keyframes float {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+            100% { transform: translateY(0px); }
+        }
+
+        .sensor-icon, .fan-icon {
+            animation: float 3s ease-in-out infinite;
+        }
+
+        .card.updating {
+            animation: pulse 1s infinite;
+            background: rgba(255, 255, 255, 0.95);
+        }
+
+        .fan-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+            margin-top: 10px;
+        }
+
+        .fan-icon {
+            font-size: 3em;
+            color: var(--text-secondary);
+            transition: all 0.3s ease;
+        }
+
+        .fan-icon.on {
+            color: var(--secondary-color);
+            animation: spin 2s linear infinite;
+        }
+
+        .fan-icon.off {
+            color: var(--danger-color);
+        }
+
+        .fan-status-text {
+            font-size: 1.2em;
+            font-weight: 500;
+            color: var(--text-secondary);
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .sensor-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+            margin-top: 10px;
+        }
+
+        .sensor-icon {
+            font-size: 3em;
+            transition: all 0.3s ease;
+        }
+
+        .temperature-icon {
+            color: var(--primary-color);
+        }
+
+        .humidity-icon {
+            color: var(--primary-color);
+        }
+
+        .sensor-value {
+            display: flex;
+            align-items: baseline;
+            gap: 5px;
+        }
+
+        .sensor-number {
+            font-size: 2.5em;
+            font-weight: 700;
+        }
+
+        .sensor-unit {
+            font-size: 1.2em;
+            font-weight: 500;
+            color: var(--text-secondary);
+        }
+
+        .sensor-status {
+            font-size: 1em;
+            font-weight: 500;
+            padding: 5px 10px;
+            border-radius: 15px;
+            background-color: rgba(0, 0, 0, 0.05);
+        }
+
+        .status-cold {
+            color: #2196F3;
+            background-color: rgba(33, 150, 243, 0.1);
+        }
+
+        .status-comfortable {
+            color: #4CAF50;
+            background-color: rgba(76, 175, 80, 0.1);
+        }
+
+        .status-warm {
+            color: #FFC107;
+            background-color: rgba(255, 193, 7, 0.1);
+        }
+
+        .status-hot {
+            color: #F44336;
+            background-color: rgba(244, 67, 54, 0.1);
+        }
+
+        .status-dry {
+            color: #F44336;
+            background-color: rgba(244, 67, 54, 0.1);
+        }
+
+        .status-humid {
+            color: #2196F3;
+            background-color: rgba(33, 150, 243, 0.1);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>ESP32 Sensor Dashboard</h1>
+            <p>Real-time monitoring of environmental conditions</p>
+        </div>
+        
+        <div class="cards">
+            <div class="card" id="temperature-card">
+                <h3>Temperature</h3>
+                <div class="sensor-container">
+                    <i class="fas fa-thermometer-half sensor-icon temperature-icon"></i>
+                    <div class="sensor-value">
+                        <span class="sensor-number" id="temperature">--</span>
+                        <span class="sensor-unit">Â°C</span>
+                    </div>
+                    <div class="sensor-status" id="temperature-status">--</div>
+                </div>
+            </div>
+            <div class="card" id="humidity-card">
+                <h3>Humidity</h3>
+                <div class="sensor-container">
+                    <i class="fas fa-tint sensor-icon humidity-icon"></i>
+                    <div class="sensor-value">
+                        <span class="sensor-number" id="humidity">--</span>
+                        <span class="sensor-unit">%</span>
+                    </div>
+                    <div class="sensor-status" id="humidity-status">--</div>
+                </div>
+            </div>
+            <div class="card" id="light-card">
+                <h3>Fan Status</h3>
+                <div class="fan-container">
+                    <i class="fas fa-fan fan-icon" id="fan-icon"></i>
+                    <div class="fan-status-text" id="fan-status">--</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="chart-container">
+            <div class="charts-grid">
+                <div class="chart-wrapper">
+                    <div class="chart-title">Temperature History</div>
+                    <div id="temperature-chart"></div>
+                </div>
+                <div class="chart-wrapper">
+                    <div class="chart-title">Humidity History</div>
+                    <div id="humidity-chart"></div>
+                </div>
+                <div class="chart-wrapper">
+                    <div class="chart-title">Fan Status History</div>
+                    <div id="light-chart"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="timestamp" id="last-update">
+            Last updated: --
+        </div>
+    </div>
+
+    <script>
+        function updateData() {
+            // Add updating animation
+            document.querySelectorAll('.card').forEach(card => {
+                card.classList.add('updating');
+            });
+
+            fetch('/data')
+                .then(response => response.json())
+                .then(data => {
+                    // Update temperature
+                    const tempElement = document.getElementById('temperature');
+                    const tempStatus = document.getElementById('temperature-status');
+                    if (data.temperature !== null) {
+                        tempElement.textContent = data.temperature.toFixed(1);
+                        const tempColor = getTemperatureColor(data.temperature);
+                        document.getElementById('temperature-card').style.borderTop = `4px solid ${tempColor}`;
+                        document.querySelector('.temperature-icon').style.color = tempColor;
+                        
+                        // Update temperature status text
+                        if (data.temperature < 15) {
+                            tempStatus.textContent = 'Cold';
+                            tempStatus.className = 'sensor-status status-cold';
+                        } else if (data.temperature < 25) {
+                            tempStatus.textContent = 'Comfortable';
+                            tempStatus.className = 'sensor-status status-comfortable';
+                        } else if (data.temperature < 30) {
+                            tempStatus.textContent = 'Warm';
+                            tempStatus.className = 'sensor-status status-warm';
+                        } else {
+                            tempStatus.textContent = 'Hot';
+                            tempStatus.className = 'sensor-status status-hot';
+                        }
+                    }
+
+                    // Update humidity
+                    const humidityElement = document.getElementById('humidity');
+                    const humidityStatus = document.getElementById('humidity-status');
+                    if (data.humidity !== null) {
+                        humidityElement.textContent = data.humidity.toFixed(1);
+                        const humidityColor = getHumidityColor(data.humidity);
+                        document.getElementById('humidity-card').style.borderTop = `4px solid ${humidityColor}`;
+                        document.querySelector('.humidity-icon').style.color = humidityColor;
+                        
+                        // Update humidity status text
+                        if (data.humidity < 30) {
+                            humidityStatus.textContent = 'Dry';
+                            humidityStatus.className = 'sensor-status status-dry';
+                        } else if (data.humidity < 60) {
+                            humidityStatus.textContent = 'Comfortable';
+                            humidityStatus.className = 'sensor-status status-comfortable';
+                        } else {
+                            humidityStatus.textContent = 'Humid';
+                            humidityStatus.className = 'sensor-status status-humid';
+                        }
+                    }
+
+                    // Update light status
+                    const fanIcon = document.getElementById('fan-icon');
+                    const fanStatus = document.getElementById('fan-status');
+                    if (data.light !== null) {
+                        const status = data.light === 0 ? 'ON' : 'OFF';
+                        fanIcon.className = `fas fa-fan fan-icon ${status.toLowerCase()}`;
+                        fanStatus.textContent = `Fan is ${status}`;
+                        fanStatus.style.color = status === 'ON' ? 'var(--secondary-color)' : 'var(--danger-color)';
+                    } else {
+                        fanIcon.className = 'fas fa-fan fan-icon';
+                        fanStatus.textContent = '--';
+                        fanStatus.style.color = 'var(--text-secondary)';
+                    }
+                    
+                    // Update timestamp
+                    if (data.timestamp) {
+                        const date = new Date(data.timestamp);
+                        document.getElementById('last-update').textContent = 
+                            `Last updated: ${date.toLocaleString()}`;
+                    }
+
+                    // Remove updating animation
+                    document.querySelectorAll('.card').forEach(card => {
+                        card.classList.remove('updating');
+                    });
+                })
+                .catch(error => {
+                    console.error('Error fetching data:', error);
+                    // Remove updating animation in case of error
+                    document.querySelectorAll('.card').forEach(card => {
+                        card.classList.remove('updating');
+                    });
+                });
+        }
+
+        function getTemperatureColor(temp) {
+            if (temp < 15) return '#2196F3'; // Cold
+            if (temp < 25) return '#4CAF50'; // Comfortable
+            if (temp < 30) return '#FFC107'; // Warm
+            return '#F44336'; // Hot
+        }
+
+        function getHumidityColor(humidity) {
+            if (humidity < 30) return '#F44336'; // Dry
+            if (humidity < 60) return '#4CAF50'; // Comfortable
+            return '#2196F3'; // Humid
+        }
+
+        function updateCharts() {
+            fetch('/chart')
+                .then(response => response.json())
+                .then(data => {
+                    // Update temperature chart
+                    Plotly.newPlot('temperature-chart', data.temperature.data, data.temperature.layout);
+                    
+                    // Update humidity chart
+                    Plotly.newPlot('humidity-chart', data.humidity.data, data.humidity.layout);
+                    
+                    // Update light/fan status chart
+                    Plotly.newPlot('light-chart', data.light.data, data.light.layout);
+                })
+                .catch(error => console.error('Error fetching charts:', error));
+        }
+
+        // Update data every 5 seconds
+        setInterval(updateData, 5000);
+        
+        // Update charts every minute
+        setInterval(updateCharts, 60000);
+
+        // Initial load
+        updateData();
+        updateCharts();
+    </script>
+</body>
+</html> 

@@ -20,9 +20,11 @@ ssl._create_default_https_context = ssl._create_unverified_context
 
 # InfluxDB configuration
 INFLUXDB_URL = "https://us-east-1-1.aws.cloud2.influxdata.com"
-INFLUXDB_TOKEN = "k1YKqkvun2CVGuaDCFSzodwsiSoFdHkUsE7_rWBSzf0ubtsq7GYwKPycBbixT5vlt4mVCpxqDXeAe2Z5BYQzvQ=="
+#INFLUXDB_TOKEN = "k1YKqkvun2CVGuaDCFSzodwsiSoFdHkUsE7_rWBSzf0ubtsq7GYwKPycBbixT5vlt4mVCpxqDXeAe2Z5BYQzvQ=="
+INFLUXDB_TOKEN = "QDDpmXr8jhPNEg4F5qV-pJVHs6GxGWgXcQHMmbdjNESY06ohnrNyTngVRS5aFZ8wp0b-3HGHi6pEtbLv-kIdjw==" #new
 INFLUXDB_ORG = "5023c10e3657904b"
-INFLUXDB_BUCKET = "COMP4436"
+#INFLUXDB_BUCKET = "COMP4436"
+INFLUXDB_BUCKET = "COMP4436-2"
 
 # MQTT Configuration
 MQTT_BROKER = "broker.hivemq.com"
@@ -45,11 +47,11 @@ def get_data_from_influxdb():
     )
     
     query_api = client.query_api()
-    
+    #|> range(start: -24h)
     try:
         query = f'''
         from(bucket: "{INFLUXDB_BUCKET}")
-            |> range(start: -24h)
+            |> range(start: 0)
             |> filter(fn: (r) => r["_measurement"] == "sensor_data")
             |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
         '''
