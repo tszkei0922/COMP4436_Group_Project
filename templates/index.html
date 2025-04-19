@@ -350,7 +350,7 @@
                 </div>
             </div>
             <div class="card" id="light-card">
-                <h3>Fan Status</h3>
+                <h3>Air-conditioning Status</h3>
                 <div class="fan-container">
                     <i class="fas fa-fan fan-icon" id="fan-icon"></i>
                     <div class="fan-status-text" id="fan-status">--</div>
@@ -369,7 +369,7 @@
                     <div id="humidity-chart"></div>
                 </div>
                 <div class="chart-wrapper">
-                    <div class="chart-title">Fan Status History</div>
+                    <div class="chart-title">Air-conditioning Status History</div>
                     <div id="light-chart"></div>
                 </div>
             </div>
@@ -443,7 +443,7 @@
                     if (data.light !== null) {
                         const status = data.light === 0 ? 'ON' : 'OFF';
                         fanIcon.className = `fas fa-fan fan-icon ${status.toLowerCase()}`;
-                        fanStatus.textContent = `Fan is ${status}`;
+                        fanStatus.textContent = `Air-conditioner is ${status}`;
                         fanStatus.style.color = status === 'ON' ? 'var(--secondary-color)' : 'var(--danger-color)';
                     } else {
                         fanIcon.className = 'fas fa-fan fan-icon';
