@@ -179,11 +179,11 @@ def get_chart():
             light_fig.add_trace(go.Scatter(
                 x=times,
                 y=lights,
-                name='Fan Status',
+                name='Air-conditioning Status',
                 line=dict(color='green', width=2)
             ))
             light_fig.update_layout(
-                title='Fan Status Over Time',
+                title='Air-conditioning Status Over Time',
                 xaxis_title='Time',
                 yaxis_title='Status (0=ON, 1=OFF)',
                 hovermode='x unified',
